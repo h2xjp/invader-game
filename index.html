@@ -37,15 +37,7 @@
     box-shadow: 0 1px 0 #050, inset 0 0 14px rgba(0,255,0,.5);
     background: #041a04;
   }
-  #movebar {
-    flex: 1; height: 72px; position: relative;
-    justify-content: space-between; padding: 0 16px; font-size: 26px;
-  }
-  #movebar .mvlabel { font-size: 12px; color: #8f8; }
-  #knob {
-    position: absolute; bottom: 6px; left: 4px; width: 26px; height: 10px;
-    background: #0f0; box-shadow: 0 0 8px #0f0;
-  }
+  #btnLeft, #btnRight { flex: 1; height: 72px; font-size: 30px; }
   #btnShot, #btnPause { width: 90px; height: 72px; font-size: 13px; line-height: 1.5; text-align: center; }
   #btnShot { color: #f66; border-color: #f66; text-shadow: 0 0 6px #f66;
              box-shadow: 0 6px 0 #500, 0 6px 0 4px #300, inset 0 0 10px rgba(255,80,80,.3); }
@@ -75,10 +67,8 @@
 </div>
 <canvas id="game" width="560" height="640"></canvas>
 <div id="controls" oncontextmenu="return false">
-  <div id="movebar" class="pad">
-    <span>◀</span><span class="mvlabel">M O V E</span><span>▶</span>
-    <div id="knob"></div>
-  </div>
+  <button id="btnLeft" class="pad">◀</button>
+  <button id="btnRight" class="pad">▶</button>
   <button id="btnShot" class="pad">SHOT</button>
   <button id="btnPause" class="pad">START<br>/PAUSE</button>
 </div>
@@ -149,42 +139,32 @@ cvs.addEventListener("mousedown", () => {
 });
 
 // ---------- タッチコントロール ----------
-const moveBar = document.getElementById("movebar");
+const btnLeft = document.getElementById("btnLeft");
+const btnRight = document.getElementById("btnRight");
 const btnShot = document.getElementById("btnShot");
 const btnPause = document.getElementById("btnPause");
-const knob = document.getElementById("knob");
-let touchTargetX = null; // バーで指している位置(キャンバス座標)
 
-function barMove(e) {
-  e.preventDefault();
-  const rect = moveBar.getBoundingClientRect();
-  const t = e.touches ? e.touches[0] : e;
-  const ratio = Math.min(1, Math.max(0, (t.clientX - rect.left) / rect.width));
-  touchTargetX = 8 + ratio * (W - 32 - 16); // 自機が画面内に収まる範囲へマップ
+// 押している間だけ対応するキーをONにする(キーボードと同じ扱い)
+function bindHold(el, key) {
+  const down = e => {
+    if (e.cancelable) e.preventDefault();
+    keys[key] = true; el.classList.add("held");
+    if (key === " " && state !== "play") startGame();
+  };
+  const up = e => {
+    if (e && e.cancelable) e.preventDefault();
+    keys[key] = false; el.classList.remove("held");
+  };
+  el.addEventListener("touchstart", down, { passive: false });
+  el.addEventListener("touchend", up, { passive: false });
+  el.addEventListener("touchcancel", up, { passive: false });
+  el.addEventListener("mousedown", down);
+  el.addEventListener("mouseup", up);
+  el.addEventListener("mouseleave", up);
 }
-let barDrag = false;
-moveBar.addEventListener("touchstart", e => { moveBar.classList.add("held"); barMove(e); }, { passive: false });
-moveBar.addEventListener("touchmove", barMove, { passive: false });
-moveBar.addEventListener("touchend", () => { moveBar.classList.remove("held"); touchTargetX = null; });
-moveBar.addEventListener("mousedown", e => { barDrag = true; barMove(e); });
-addEventListener("mousemove", e => { if (barDrag) barMove(e); });
-addEventListener("mouseup", () => { barDrag = false; touchTargetX = null; });
-
-// SHOT: 押している間オート連射(スペースキー押下と同じ扱い)
-function shotDown(e) {
-  if (e.cancelable) e.preventDefault();
-  keys[" "] = true; btnShot.classList.add("held");
-  if (state !== "play") startGame();
-}
-function shotUp(e) {
-  if (e && e.cancelable) e.preventDefault();
-  keys[" "] = false; btnShot.classList.remove("held");
-}
-btnShot.addEventListener("touchstart", shotDown, { passive: false });
-btnShot.addEventListener("touchend", shotUp, { passive: false });
-btnShot.addEventListener("mousedown", shotDown);
-btnShot.addEventListener("mouseup", shotUp);
-btnShot.addEventListener("mouseleave", shotUp);
+bindHold(btnLeft, "ArrowLeft");
+bindHold(btnRight, "ArrowRight");
+bindHold(btnShot, " ");
 
 // START/PAUSE: 未プレイ時はスタート、プレイ中はポーズ切替
 function pauseAction(e) {
@@ -323,10 +303,6 @@ function update() {
   const spd = 5;
   if (keys["ArrowLeft"]) player.x = Math.max(8, player.x - spd);
   if (keys["ArrowRight"]) player.x = Math.min(W - player.w - 8, player.x + spd);
-  if (touchTargetX != null) {
-    const diff = touchTargetX - player.x;
-    player.x += Math.max(-spd * 1.4, Math.min(spd * 1.4, diff));
-  }
   if (player.cool > 0) player.cool--;
   if (keys[" "] && player.cool <= 0) { shoot(); player.cool = fireDelay; }
   if (invincible > 0) invincible--;
@@ -572,10 +548,6 @@ function draw() {
   document.getElementById("hi").textContent = hi;
   document.getElementById("wave").textContent = wave;
   document.getElementById("lives").textContent = "♥".repeat(Math.max(0, lives));
-  if (player) {
-    const range = moveBar.clientWidth - 26 - 8;
-    knob.style.left = (4 + (player.x - 8) / (W - 32 - 16) * range) + "px";
-  }
   const rapidLv = Math.round((22 - fireDelay) / 4) + 1;
   document.getElementById("weapon").textContent =
     `Lv${weaponLv} 連射Lv${rapidLv}` +
