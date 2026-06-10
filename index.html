@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>INVADERS - パワーアップ版</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #0a0a2a 0%, #000 70%);
+    font-family: "Courier New", monospace; color: #0f0;
+  }
+  h1 { margin: 10px 0 4px; font-size: 22px; letter-spacing: 6px; text-shadow: 0 0 8px #0f0; }
+  #hud { display: flex; gap: 28px; font-size: 15px; margin-bottom: 6px; }
+  #hud .pw { color: #ff0; }
+  canvas { border: 2px solid #0f0; box-shadow: 0 0 20px rgba(0,255,0,.4); background: #000;
+           max-width: 96vw; height: auto; image-rendering: pixelated; }
+  #legend { font-size: 12px; color: #8f8; margin-top: 8px; }
+  #legend span { margin: 0 8px; }
+
+  /* ---- 8BIT風タッチコントロール ---- */
+  #controls {
+    display: flex; gap: 12px; width: 560px; max-width: 96vw; margin-top: 12px;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+    -webkit-touch-callout: none;
+  }
+  .pad {
+    font-family: "Courier New", monospace; font-weight: bold; color: #0f0;
+    background: #000; border: 4px solid #0f0; border-radius: 0;
+    box-shadow: 0 6px 0 #050, 0 6px 0 4px #030, inset 0 0 10px rgba(0,255,0,.3);
+    text-shadow: 0 0 6px #0f0; letter-spacing: 2px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pad:active, .pad.held {
+    transform: translateY(5px);
+    box-shadow: 0 1px 0 #050, inset 0 0 14px rgba(0,255,0,.5);
+    background: #041a04;
+  }
+  #movebar {
+    flex: 1; height: 72px; position: relative;
+    justify-content: space-between; padding: 0 16px; font-size: 26px;
+  }
+  #movebar .mvlabel { font-size: 12px; color: #8f8; }
+  #knob {
+    position: absolute; bottom: 6px; left: 4px; width: 26px; height: 10px;
+    background: #0f0; box-shadow: 0 0 8px #0f0;
+  }
+  #btnShot, #btnPause { width: 90px; height: 72px; font-size: 13px; line-height: 1.5; text-align: center; }
+  #btnShot { color: #f66; border-color: #f66; text-shadow: 0 0 6px #f66;
+             box-shadow: 0 6px 0 #500, 0 6px 0 4px #300, inset 0 0 10px rgba(255,80,80,.3); }
+  #btnShot:active, #btnShot.held {
+    box-shadow: 0 1px 0 #500, inset 0 0 14px rgba(255,80,80,.5); background: #1a0404; }
+  #btnPause { color: #fd0; border-color: #fd0; text-shadow: 0 0 6px #fd0;
+              box-shadow: 0 6px 0 #550, 0 6px 0 4px #330, inset 0 0 10px rgba(255,221,0,.3); }
+  #btnPause:active {
+    box-shadow: 0 1px 0 #550, inset 0 0 14px rgba(255,221,0,.5); background: #1a1604; }
+
+  /* スマホ向け調整 */
+  @media (max-width: 600px) {
+    #hud { flex-wrap: wrap; justify-content: center; gap: 6px 14px; font-size: 12px; padding: 0 6px; }
+    h1 { font-size: 18px; }
+    #legend { padding: 0 8px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+<h1>INVADERS</h1>
+<div id="hud">
+  <div>SCORE: <span id="score">0</span></div>
+  <div>HI: <span id="hi">0</span></div>
+  <div>WAVE: <span id="wave">1</span></div>
+  <div>LIVES: <span id="lives">3</span></div>
+  <div class="pw">WEAPON: <span id="weapon">Lv1</span></div>
+</div>
+<canvas id="game" width="560" height="640"></canvas>
+<div id="controls" oncontextmenu="return false">
+  <div id="movebar" class="pad">
+    <span>◀</span><span class="mvlabel">M O V E</span><span>▶</span>
+    <div id="knob"></div>
+  </div>
+  <button id="btnShot" class="pad">SHOT</button>
+  <button id="btnPause" class="pad">START<br>/PAUSE</button>
+</div>
+<div id="legend">
+  操作: ←→ 移動 / スペース 発射 / P 一時停止 / M BGM切替 &nbsp;|&nbsp; カプセル:
+  <span style="color:#f44">● POWER(攻撃Lv↑)</span>
+  <span style="color:#4af">● RAPID(連射↑)</span>
+  <span style="color:#4f4">● PIERCE(貫通10秒)</span>
+  <span style="color:#fd0">● SHIELD(バリア)</span>
+</div>
+
+<script>
+"use strict";
+const cvs = document.getElementById("game");
+const ctx = cvs.getContext("2d");
+const W = cvs.width, H = cvs.height;
+
+// ---------- サウンド ----------
+let actx = null;
+function beep(freq, dur = 0.08, type = "square", vol = 0.05) {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === "suspended") actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  } catch (e) {}
+}
+
+// ---------- BGM ----------
+// 本家風: 4音の低音ループ。敵が減るほど・WAVEが進むほどテンポが上がる
+let bgmOn = true, bgmStep = 0, bgmTimer = 0, bgmBar = 0;
+const BGM_BASS = [110, 103.83, 98, 92.5];           // A2 → G#2 → G2 → F#2
+const BGM_ARP  = [220, 261.63, 329.63, 261.63];     // たまに鳴るアルペジオ
+function bgmTick() {
+  if (!bgmOn) return;
+  bgmTimer--;
+  if (bgmTimer > 0) return;
+  const aliveRatio = enemies.length ? enemies.filter(e => e.alive).length / enemies.length : 1;
+  // 間隔: 敵全滅に近づくほど 36 → 10 フレームへ。WAVEでも少し加速
+  bgmTimer = Math.max(10, (36 - (1 - aliveRatio) * 22) - Math.min(8, wave));
+  beep(BGM_BASS[bgmStep], 0.16, "triangle", 0.25);
+  beep(BGM_BASS[bgmStep] / 2, 0.16, "square", 0.06); // 1オクターブ下を重ねて厚みを出す
+  // 2小節に1回、裏でアルペジオを重ねる
+  if (bgmBar % 2 === 1) beep(BGM_ARP[bgmStep], 0.08, "square", 0.05);
+  bgmStep = (bgmStep + 1) % 4;
+  if (bgmStep === 0) bgmBar++;
+}
+
+// ---------- 入力 ----------
+const keys = {};
+addEventListener("keydown", e => {
+  if (["ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+  keys[e.key] = true;
+  if (e.key === "p" || e.key === "P") paused = !paused;
+  if (e.key === "m" || e.key === "M") { bgmOn = !bgmOn; toast(bgmOn ? "BGM ON" : "BGM OFF"); }
+  if (state !== "play" && (e.key === " " || e.key === "Enter")) startGame();
+});
+addEventListener("keyup", e => keys[e.key] = false);
+
+// クリック/タップでも開始できるようにする(プレビュー等でキー入力が届かない場合の保険)
+cvs.addEventListener("mousedown", () => {
+  window.focus();
+  if (state !== "play") startGame();
+});
+
+// ---------- タッチコントロール ----------
+const moveBar = document.getElementById("movebar");
+const btnShot = document.getElementById("btnShot");
+const btnPause = document.getElementById("btnPause");
+const knob = document.getElementById("knob");
+let touchTargetX = null; // バーで指している位置(キャンバス座標)
+
+function barMove(e) {
+  e.preventDefault();
+  const rect = moveBar.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  const ratio = Math.min(1, Math.max(0, (t.clientX - rect.left) / rect.width));
+  touchTargetX = 8 + ratio * (W - 32 - 16); // 自機が画面内に収まる範囲へマップ
+}
+let barDrag = false;
+moveBar.addEventListener("touchstart", e => { moveBar.classList.add("held"); barMove(e); }, { passive: false });
+moveBar.addEventListener("touchmove", barMove, { passive: false });
+moveBar.addEventListener("touchend", () => { moveBar.classList.remove("held"); touchTargetX = null; });
+moveBar.addEventListener("mousedown", e => { barDrag = true; barMove(e); });
+addEventListener("mousemove", e => { if (barDrag) barMove(e); });
+addEventListener("mouseup", () => { barDrag = false; touchTargetX = null; });
+
+// SHOT: 押している間オート連射(スペースキー押下と同じ扱い)
+function shotDown(e) {
+  if (e.cancelable) e.preventDefault();
+  keys[" "] = true; btnShot.classList.add("held");
+  if (state !== "play") startGame();
+}
+function shotUp(e) {
+  if (e && e.cancelable) e.preventDefault();
+  keys[" "] = false; btnShot.classList.remove("held");
+}
+btnShot.addEventListener("touchstart", shotDown, { passive: false });
+btnShot.addEventListener("touchend", shotUp, { passive: false });
+btnShot.addEventListener("mousedown", shotDown);
+btnShot.addEventListener("mouseup", shotUp);
+btnShot.addEventListener("mouseleave", shotUp);
+
+// START/PAUSE: 未プレイ時はスタート、プレイ中はポーズ切替
+function pauseAction(e) {
+  if (e.cancelable) e.preventDefault();
+  if (state !== "play") startGame();
+  else paused = !paused;
+}
+btnPause.addEventListener("touchstart", pauseAction, { passive: false });
+btnPause.addEventListener("mousedown", pauseAction);
+
+// ---------- ゲーム状態 ----------
+let state = "title"; // title | play | gameover
+let paused = false;
+let score = 0, hi = +(localStorage.getItem("inv_hi") || 0), lives = 3, wave = 1;
+let player, bullets, enemyBullets, enemies, capsules, particles, stars;
+let eDir = 1, eSpeed = 0, eStepDown = false, eShootTimer = 0;
+let invincible = 0, shake = 0;
+
+// パワーアップ状態
+let weaponLv = 1;        // 1〜4: 弾数・配置が変化
+let fireDelay = 22;      // フレーム間隔(RAPIDで短縮)
+let pierceTimer = 0;     // 貫通残り(フレーム)
+let shield = 0;          // バリア枚数
+
+const CAPSULE_TYPES = [
+  { id: "POWER",  color: "#f44", weight: 34 },
+  { id: "RAPID",  color: "#4af", weight: 30 },
+  { id: "PIERCE", color: "#4f4", weight: 20 },
+  { id: "SHIELD", color: "#fd0", weight: 16 },
+];
+
+// ---------- 星空 ----------
+stars = Array.from({ length: 70 }, () => ({
+  x: Math.random() * W, y: Math.random() * H,
+  s: Math.random() * 1.5 + 0.3, v: Math.random() * 0.5 + 0.1
+}));
+
+// ---------- 敵スプライト(ドット絵) ----------
+const SPRITES = [
+  ["0011110001111110111111111101101111111111001001001011110110100101", "#f6f"],
+  ["0010010010111101111111111101101111111111011110100100001010000010", "#6ff"],
+  ["0001100000111100011111101101101111111111101001010100001001100110", "#9f6"],
+];
+function drawSprite(bits, color, x, y, scale) {
+  ctx.fillStyle = color;
+  for (let i = 0; i < 64; i++) {
+    if (bits[i] === "1") ctx.fillRect(x + (i % 8) * scale, y + ((i / 8) | 0) * scale, scale, scale);
+  }
+}
+
+// ---------- 初期化 ----------
+function makeWave(n) {
+  const rows = Math.min(4 + ((n - 1) >> 1), 6), cols = 9;
+  enemies = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      enemies.push({
+        x: 60 + c * 48, y: 60 + r * 40, w: 32, h: 24,
+        type: r % 3, alive: true,
+        hp: 1 + (n >= 5 && r === 0 ? 1 : 0),
+        anim: 0
+      });
+  eDir = 1;
+  eSpeed = 0.25 + n * 0.07;
+}
+
+function startGame() {
+  score = 0; lives = 3; wave = 1;
+  weaponLv = 1; fireDelay = 22; pierceTimer = 0; shield = 0;
+  player = { x: W / 2 - 16, y: H - 48, w: 32, h: 18, cool: 0 };
+  bullets = []; enemyBullets = []; capsules = []; particles = [];
+  invincible = 120;
+  makeWave(wave);
+  state = "play";
+}
+
+// ---------- パーティクル ----------
+function burst(x, y, color, n = 12) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = Math.random() * 3 + 1;
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 30 + Math.random() * 20, color });
+  }
+}
+
+// ---------- カプセルドロップ ----------
+function maybeDrop(x, y) {
+  if (Math.random() >= 0.10) return; // 10%でドロップ
+  const total = CAPSULE_TYPES.reduce((s, t) => s + t.weight, 0);
+  let r = Math.random() * total, type = CAPSULE_TYPES[0];
+  for (const t of CAPSULE_TYPES) { r -= t.weight; if (r < 0) { type = t; break; } }
+  capsules.push({ x, y, vy: 1.4, r: 10, type, t: 0 });
+}
+
+function applyCapsule(c) {
+  const t = c.type.id;
+  if (t === "POWER") {
+    if (weaponLv < 4) { weaponLv++; toast(`攻撃力UP! Lv${weaponLv}`); }
+    else { score += 500; toast("攻撃MAX! +500pts"); }
+  } else if (t === "RAPID") {
+    if (fireDelay > 8) { fireDelay -= 4; toast("連射速度UP!"); }
+    else { score += 300; toast("連射MAX! +300pts"); }
+  } else if (t === "PIERCE") {
+    pierceTimer = 600; toast("貫通弾! 10秒");
+  } else if (t === "SHIELD") {
+    if (shield < 3) { shield++; toast(`シールド +1 (${shield})`); }
+    else { score += 300; toast("シールドMAX! +300pts"); }
+  }
+  beep(880, 0.12, "triangle", 0.08); beep(1320, 0.15, "triangle", 0.06);
+  burst(c.x, c.y, c.type.color, 16);
+}
+
+// ---------- トースト表示 ----------
+let toasts = [];
+function toast(msg) { toasts.push({ msg, life: 90 }); }
+
+// ---------- 発射 ----------
+function shoot() {
+  const cx = player.x + player.w / 2, y = player.y - 6;
+  const pierce = pierceTimer > 0;
+  const mk = (dx, vx = 0) => bullets.push({ x: cx + dx, y, vx, vy: -9, pierce, hits: 0 });
+  if (weaponLv === 1) mk(0);
+  else if (weaponLv === 2) { mk(-7); mk(7); }
+  else if (weaponLv === 3) { mk(0); mk(-10, -1.2); mk(10, 1.2); }
+  else { mk(-6); mk(6); mk(-14, -2); mk(14, 2); }
+  beep(pierce ? 660 : 440, 0.06, "square", 0.04);
+}
+
+// ---------- 更新 ----------
+function update() {
+  // 星
+  for (const s of stars) { s.y += s.v; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+  if (state !== "play" || paused) return;
+  bgmTick();
+
+  // プレイヤー
+  const spd = 5;
+  if (keys["ArrowLeft"]) player.x = Math.max(8, player.x - spd);
+  if (keys["ArrowRight"]) player.x = Math.min(W - player.w - 8, player.x + spd);
+  if (touchTargetX != null) {
+    const diff = touchTargetX - player.x;
+    player.x += Math.max(-spd * 1.4, Math.min(spd * 1.4, diff));
+  }
+  if (player.cool > 0) player.cool--;
+  if (keys[" "] && player.cool <= 0) { shoot(); player.cool = fireDelay; }
+  if (invincible > 0) invincible--;
+  if (pierceTimer > 0) pierceTimer--;
+  if (shake > 0) shake--;
+
+  // 自弾
+  for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
+  bullets = bullets.filter(b => b.y > -20 && b.x > -10 && b.x < W + 10 && b.hits < 3);
+
+  // 敵移動
+  const alive = enemies.filter(e => e.alive);
+  if (alive.length === 0) {
+    wave++; makeWave(wave);
+    toast(`WAVE ${wave}!`); beep(523, .1); setTimeout(() => beep(784, .15), 120);
+    return;
+  }
+  const speedMul = 1 + (1 - alive.length / enemies.length) * 2.2;
+  let hitEdge = false;
+  for (const e of alive) {
+    e.x += eDir * eSpeed * speedMul;
+    e.anim += 0.05;
+    if (e.x < 10 || e.x + e.w > W - 10) hitEdge = true;
+  }
+  if (hitEdge) {
+    eDir *= -1;
+    for (const e of alive) { e.y += 14; e.x += eDir * 2; }
+  }
+
+  // 敵の発射
+  eShootTimer--;
+  if (eShootTimer <= 0) {
+    // WAVEごとに発射間隔を8%ずつ短縮(最大60%短縮まで)
+    const waveMul = Math.max(0.4, 1 - (wave - 1) * 0.08);
+    eShootTimer = ((60 + Math.random() * 40) / 2) * waveMul;
+    const shooter = alive[(Math.random() * alive.length) | 0];
+    const aimed = Math.random() < 0.35;
+    let vx = 0;
+    if (aimed) {
+      const dx = (player.x + player.w / 2) - (shooter.x + shooter.w / 2);
+      vx = Math.max(-2, Math.min(2, dx / 120));
+    }
+    enemyBullets.push({ x: shooter.x + shooter.w / 2, y: shooter.y + shooter.h, vx, vy: 2.6 + wave * 0.25 });
+  }
+  for (const b of enemyBullets) { b.x += b.vx; b.y += b.vy; }
+  enemyBullets = enemyBullets.filter(b => b.y < H + 20);
+
+  // 自弾 × 敵
+  for (const b of bullets) {
+    for (const e of alive) {
+      if (!e.alive) continue;
+      if (b.x > e.x - 3 && b.x < e.x + e.w + 3 && b.y > e.y && b.y < e.y + e.h) {
+        e.hp--;
+        if (e.hp <= 0) {
+          e.alive = false;
+          score += (3 - e.type) * 10 + 10;
+          burst(e.x + e.w / 2, e.y + e.h / 2, SPRITES[e.type][1]);
+          maybeDrop(e.x + e.w / 2, e.y + e.h / 2);
+          beep(180 + Math.random() * 80, 0.1, "sawtooth", 0.05);
+        } else {
+          burst(b.x, b.y, "#fff", 4);
+          beep(300, 0.04);
+        }
+        if (b.pierce) { b.hits++; } else { b.hits = 99; }
+        break;
+      }
+    }
+  }
+  bullets = bullets.filter(b => b.hits < 3);
+
+  // カプセル
+  for (const c of capsules) { c.y += c.vy; c.t += 0.1; }
+  capsules = capsules.filter(c => {
+    if (c.y > H + 15) return false;
+    const px = player.x + player.w / 2, py = player.y + player.h / 2;
+    if (Math.abs(c.x - px) < c.r + player.w / 2 && Math.abs(c.y - py) < c.r + player.h) {
+      applyCapsule(c);
+      return false;
+    }
+    return true;
+  });
+
+  // 敵弾 × プレイヤー / 敵到達
+  const hitPlayer = b =>
+    b.x > player.x && b.x < player.x + player.w &&
+    b.y > player.y && b.y < player.y + player.h;
+  for (const b of enemyBullets) {
+    if (invincible <= 0 && hitPlayer(b)) {
+      b.y = H + 99;
+      if (shield > 0) {
+        shield--; invincible = 40; shake = 8;
+        toast("シールドが守った!"); beep(220, 0.15, "triangle", 0.07);
+        burst(player.x + player.w / 2, player.y, "#fd0", 14);
+      } else {
+        damagePlayer();
+      }
+    }
+  }
+  for (const e of alive) {
+    if (e.y + e.h >= player.y - 4) { lives = 0; gameOver(); return; }
+  }
+
+  // パーティクル
+  for (const p of particles) { p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.life--; }
+  particles = particles.filter(p => p.life > 0);
+  toasts.forEach(t => t.life--);
+  toasts = toasts.filter(t => t.life > 0);
+}
+
+function damagePlayer() {
+  lives--; shake = 14; invincible = 120;
+  burst(player.x + player.w / 2, player.y + 8, "#0f0", 24);
+  beep(110, 0.3, "sawtooth", 0.09);
+  // 被弾でパワー半減ペナルティ
+  weaponLv = Math.max(1, weaponLv - 1);
+  if (lives <= 0) gameOver();
+}
+
+function gameOver() {
+  state = "gameover";
+  if (score > hi) { hi = score; localStorage.setItem("inv_hi", hi); }
+  beep(90, 0.6, "sawtooth", 0.1);
+}
+
+// ---------- 描画 ----------
+function draw() {
+  ctx.save();
+  if (shake > 0) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+  ctx.clearRect(-20, -20, W + 40, H + 40);
+
+  // 星
+  ctx.fillStyle = "#88a";
+  for (const s of stars) ctx.fillRect(s.x, s.y, s.s, s.s);
+
+  if (state === "title") {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#0f0"; ctx.font = "bold 40px 'Courier New'";
+    ctx.fillText("INVADERS", W / 2, 200);
+    ctx.font = "16px 'Courier New'"; ctx.fillStyle = "#ff0";
+    ctx.fillText("〜 POWER-UP EDITION 〜", W / 2, 235);
+    ctx.fillStyle = "#fff";
+    ctx.fillText("敵を倒すとカプセルが降ってくる!", W / 2, 320);
+    ctx.fillText("取って自機を強化しよう", W / 2, 348);
+    drawSprite(SPRITES[0][0], SPRITES[0][1], W / 2 - 70, 390, 3);
+    drawSprite(SPRITES[1][0], SPRITES[1][1], W / 2 - 12, 390, 3);
+    drawSprite(SPRITES[2][0], SPRITES[2][1], W / 2 + 46, 390, 3);
+    if ((performance.now() / 500 | 0) % 2) {
+      ctx.fillStyle = "#0f0";
+      ctx.fillText("クリック または SPACE キーでスタート", W / 2, 500);
+    }
+    ctx.restore(); return;
+  }
+
+  // 敵
+  for (const e of enemies) {
+    if (!e.alive) continue;
+    const bob = Math.sin(e.anim) * 2;
+    drawSprite(SPRITES[e.type][0], e.hp > 1 ? "#fff" : SPRITES[e.type][1], e.x, e.y + bob, 4);
+  }
+
+  // 自弾
+  for (const b of bullets) {
+    ctx.fillStyle = b.pierce ? "#4f4" : "#ff0";
+    if (b.pierce) { ctx.shadowColor = "#4f4"; ctx.shadowBlur = 8; }
+    ctx.fillRect(b.x - 2, b.y - 8, 4, 12);
+    ctx.shadowBlur = 0;
+  }
+
+  // 敵弾
+  ctx.fillStyle = "#f66";
+  for (const b of enemyBullets) ctx.fillRect(b.x - 2, b.y, 4, 10);
+
+  // カプセル
+  for (const c of capsules) {
+    const pulse = 1 + Math.sin(c.t * 3) * 0.15;
+    ctx.save();
+    ctx.translate(c.x, c.y); ctx.scale(pulse, pulse);
+    ctx.shadowColor = c.type.color; ctx.shadowBlur = 12;
+    ctx.fillStyle = c.type.color;
+    ctx.beginPath(); ctx.arc(0, 0, c.r, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#000"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
+    ctx.fillText(c.type.id[0], 0, 3.5);
+    ctx.restore();
+  }
+
+  // プレイヤー
+  if (state === "play" && (invincible <= 0 || (invincible / 5 | 0) % 2)) {
+    const px = player.x, py = player.y;
+    ctx.fillStyle = pierceTimer > 0 ? "#8f8" : "#0f0";
+    ctx.beginPath();
+    ctx.moveTo(px + player.w / 2, py);
+    ctx.lineTo(px + player.w, py + player.h);
+    ctx.lineTo(px, py + player.h);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(px + player.w / 2 - 2, py - 6, 4, 8);
+    // シールド
+    if (shield > 0) {
+      ctx.strokeStyle = `rgba(255,221,0,${0.4 + shield * 0.2})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(px + player.w / 2, py + player.h / 2, 28, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // パーティクル
+  for (const p of particles) {
+    ctx.globalAlpha = Math.min(1, p.life / 20);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 3, 3);
+  }
+  ctx.globalAlpha = 1;
+
+  // トースト
+  ctx.textAlign = "center"; ctx.font = "bold 16px 'Courier New'";
+  toasts.forEach((t, i) => {
+    ctx.globalAlpha = Math.min(1, t.life / 30);
+    ctx.fillStyle = "#ff0";
+    ctx.fillText(t.msg, W / 2, H - 120 - i * 22);
+  });
+  ctx.globalAlpha = 1;
+
+  if (paused && state === "play") {
+    ctx.fillStyle = "rgba(0,0,0,.6)"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 30px 'Courier New'";
+    ctx.fillText("PAUSE", W / 2, H / 2);
+  }
+
+  if (state === "gameover") {
+    ctx.fillStyle = "rgba(0,0,0,.7)"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#f44"; ctx.font = "bold 42px 'Courier New'";
+    ctx.fillText("GAME OVER", W / 2, H / 2 - 30);
+    ctx.fillStyle = "#fff"; ctx.font = "18px 'Courier New'";
+    ctx.fillText(`SCORE: ${score}   HI: ${hi}`, W / 2, H / 2 + 12);
+    if ((performance.now() / 500 | 0) % 2)
+      ctx.fillText("クリック または SPACE キーでリトライ", W / 2, H / 2 + 60);
+  }
+  ctx.restore();
+
+  // HUD
+  document.getElementById("score").textContent = score;
+  document.getElementById("hi").textContent = hi;
+  document.getElementById("wave").textContent = wave;
+  document.getElementById("lives").textContent = "♥".repeat(Math.max(0, lives));
+  if (player) {
+    const range = moveBar.clientWidth - 26 - 8;
+    knob.style.left = (4 + (player.x - 8) / (W - 32 - 16) * range) + "px";
+  }
+  const rapidLv = Math.round((22 - fireDelay) / 4) + 1;
+  document.getElementById("weapon").textContent =
+    `Lv${weaponLv} 連射Lv${rapidLv}` +
+    (pierceTimer > 0 ? ` 貫通${Math.ceil(pierceTimer / 60)}s` : "") +
+    (shield > 0 ? ` 盾x${shield}` : "");
+}
+
+// ---------- メインループ ----------
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>
