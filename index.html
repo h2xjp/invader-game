@@ -103,32 +103,41 @@ function beep(freq, dur = 0.08, type = "square", vol = 0.05) {
 }
 
 // ---------- BGM ----------
-// グラディウス風: 8分音符で疾走するオクターブベース + 勇壮なAマイナーのメロディ(オリジナル曲)
+// テトリス風: ロシア民謡「コロブチカ」(パブリックドメイン)のチップチューンアレンジ
 let bgmOn = true, bgmStep = 0, bgmTimer = 0;
-// 周波数(Hz)。0は休符。4小節 x 8分音符 = 32ステップのループ
-const A2=110, E2=82.41, F2=87.31, G2=98, A3=220, E3=164.81, F3=174.61, G3=196;
-const A4=440, B4=493.88, C5=523.25, D5=587.33, E5=659.25, F5=698.46, G4=392, G5=783.99, E4=329.63;
+// 周波数(Hz)。0は休符/音を伸ばす。8小節 x 8分音符 = 64ステップのループ
+const E2=82.41, A2=110, B2=123.47, C3=130.81, D3=146.83, E3=164.81,
+      A3=220, B3=246.94, C4=261.63, D4=293.66,
+      A4=440, B4=493.88, C5=523.25, D5=587.33, E5=659.25, F5=698.46, G5=783.99, A5=880;
 const BGM_MELODY = [
-  A4, 0,  C5, E5, D5, C5, D5, E5,   // 駆け上がり
-  B4, 0,  G4, B4, D5, B4, C5, D5,
-  C5, E5, G5, E5, F5, E5, D5, C5,   // クライマックス
-  B4, D5, B4, G4, A4, 0,  A4, 0,
+  E5, 0,  B4, C5, D5, 0,  C5, B4,
+  A4, 0,  A4, C5, E5, 0,  D5, C5,
+  B4, 0,  0,  C5, D5, 0,  E5, 0,
+  C5, 0,  A4, 0,  A4, 0,  0,  0,
+  0,  D5, 0,  F5, A5, 0,  G5, F5,
+  E5, 0,  0,  C5, E5, 0,  D5, C5,
+  B4, 0,  B4, C5, D5, 0,  E5, 0,
+  C5, 0,  A4, 0,  A4, 0,  0,  0,
 ];
 const BGM_BASSLINE = [
-  A2, A3, A2, A3, A2, A3, A2, A3,   // ギャロップするオクターブベース
-  G2, G3, G2, G3, G2, G3, G2, G3,
-  F2, F3, F2, F3, F2, F3, F2, F3,
-  E2, E3, E2, E3, G2, G3, G2, G3,
+  E2, E3, E2, E3, E2, E3, E2, E3,   // Em
+  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
+  B2, B3, B2, B3, B2, B3, B2, B3,   // B7
+  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
+  D3, D4, D3, D4, D3, D4, D3, D4,   // Dm
+  C3, C4, C3, C4, C3, C4, C3, C4,   // C
+  B2, B3, B2, B3, B2, B3, B2, B3,   // B7
+  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
 ];
 function bgmTick() {
   if (!bgmOn) return;
   if (--bgmTimer > 0) return;
-  bgmTimer = 9; // 約200BPMの8分音符(60fps基準)
+  bgmTimer = 12; // 約150BPMの8分音符(60fps基準)
   const m = BGM_MELODY[bgmStep], b = BGM_BASSLINE[bgmStep];
-  if (b) beep(b, 0.13, "triangle", 0.25);
+  if (b) beep(b, 0.15, "triangle", 0.25);
   if (m) {
-    beep(m, 0.13, "square", 0.10);       // メインリード
-    beep(m * 2.003, 0.11, "square", 0.03); // 微デチューンを重ねて広がりを出す
+    beep(m, 0.17, "square", 0.10);         // メインリード
+    beep(m * 2.003, 0.14, "square", 0.03); // 微デチューンを重ねて広がりを出す
   }
   bgmStep = (bgmStep + 1) % BGM_MELODY.length;
 }
@@ -194,6 +203,7 @@ let score = 0, hi = +(localStorage.getItem("inv_hi") || 0), lives = 3, wave = 1;
 let player, bullets, enemyBullets, enemies, capsules, particles, stars;
 let eDir = 1, eSpeed = 0, eStepDown = false, eShootTimer = 0;
 let invincible = 0, shake = 0, flash = 0;
+let boss = null; // 10の倍数WAVEに出現する巨大ボス
 
 // パワーアップ状態
 let weaponLv = 1;        // 1〜4: 弾数・配置が変化
@@ -230,6 +240,16 @@ function drawSprite(bits, color, x, y, scale) {
 
 // ---------- 初期化 ----------
 function makeWave(n) {
+  boss = null;
+  if (n % 10 === 0) {
+    // ボスWAVE: 雑魚なし、超巨大ボス1体
+    enemies = [];
+    const maxHp = 100 + n * 5;
+    boss = { x: W / 2 - 80, y: 60, w: 160, h: 160, hp: maxHp, maxHp,
+             dir: 1, anim: 0, hitT: 0, shootT: 90 };
+    toast("!! 巨大ボス出現 !!");
+    return;
+  }
   const rows = Math.min(4 + ((n - 1) >> 1), 6), cols = 9;
   enemies = [];
   for (let r = 0; r < rows; r++)
@@ -320,6 +340,9 @@ function shoot() {
 function update() {
   // 星
   for (const s of stars) { s.y += s.v; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
+  // シェイク・フラッシュはゲームオーバー画面でも減衰させる(文字が震え続けないように)
+  if (shake > 0) shake--;
+  if (flash > 0) flash--;
   if (state !== "play" || paused) return;
   bgmTick();
 
@@ -331,8 +354,6 @@ function update() {
   if (keys[" "] && player.cool <= 0) { shoot(); player.cool = fireDelay; }
   if (invincible > 0) invincible--;
   if (pierceTimer > 0) pierceTimer--;
-  if (shake > 0) shake--;
-  if (flash > 0) flash--;
 
   // 自弾
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
@@ -340,37 +361,41 @@ function update() {
 
   // 敵移動
   const alive = enemies.filter(e => e.alive);
-  if (alive.length === 0) {
+  if (!boss && alive.length === 0) {
     wave++; makeWave(wave);
     toast(`WAVE ${wave}!`); beep(523, .1); setTimeout(() => beep(784, .15), 120);
     return;
   }
-  const speedMul = 1 + (1 - alive.length / enemies.length) * 2.2;
-  let hitEdge = false;
-  for (const e of alive) {
-    e.x += eDir * eSpeed * speedMul;
-    e.anim += 0.05;
-    if (e.x < 10 || e.x + e.w > W - 10) hitEdge = true;
-  }
-  if (hitEdge) {
-    eDir *= -1;
-    for (const e of alive) { e.y += 14; e.x += eDir * 2; }
-  }
-
-  // 敵の発射
-  eShootTimer--;
-  if (eShootTimer <= 0) {
-    // WAVEごとに発射間隔を8%ずつ短縮(最大60%短縮まで)
-    const waveMul = Math.max(0.4, 1 - (wave - 1) * 0.08);
-    eShootTimer = ((60 + Math.random() * 40) / 2) * waveMul;
-    const shooter = alive[(Math.random() * alive.length) | 0];
-    const aimed = Math.random() < 0.35;
-    let vx = 0;
-    if (aimed) {
-      const dx = (player.x + player.w / 2) - (shooter.x + shooter.w / 2);
-      vx = Math.max(-2, Math.min(2, dx / 120));
+  if (boss) {
+    updateBoss();
+  } else {
+    const speedMul = 1 + (1 - alive.length / enemies.length) * 2.2;
+    let hitEdge = false;
+    for (const e of alive) {
+      e.x += eDir * eSpeed * speedMul;
+      e.anim += 0.05;
+      if (e.x < 10 || e.x + e.w > W - 10) hitEdge = true;
     }
-    enemyBullets.push({ x: shooter.x + shooter.w / 2, y: shooter.y + shooter.h, vx, vy: 2.6 + wave * 0.25 });
+    if (hitEdge) {
+      eDir *= -1;
+      for (const e of alive) { e.y += 14; e.x += eDir * 2; }
+    }
+
+    // 敵の発射
+    eShootTimer--;
+    if (eShootTimer <= 0) {
+      // WAVEごとに発射間隔を8%ずつ短縮(最大60%短縮まで)
+      const waveMul = Math.max(0.4, 1 - (wave - 1) * 0.08);
+      eShootTimer = ((60 + Math.random() * 40) / 2) * waveMul;
+      const shooter = alive[(Math.random() * alive.length) | 0];
+      const aimed = Math.random() < 0.35;
+      let vx = 0;
+      if (aimed) {
+        const dx = (player.x + player.w / 2) - (shooter.x + shooter.w / 2);
+        vx = Math.max(-2, Math.min(2, dx / 120));
+      }
+      enemyBullets.push({ x: shooter.x + shooter.w / 2, y: shooter.y + shooter.h, vx, vy: 2.6 + wave * 0.25 });
+    }
   }
   for (const b of enemyBullets) { b.x += b.vx; b.y += b.vy; }
   enemyBullets = enemyBullets.filter(b => b.y < H + 20);
@@ -397,6 +422,19 @@ function update() {
     }
   }
   bullets = bullets.filter(b => b.hits < 3);
+
+  // 自弾 × ボス
+  if (boss) {
+    for (const b of bullets) {
+      if (b.x > boss.x && b.x < boss.x + boss.w && b.y > boss.y && b.y < boss.y + boss.h) {
+        b.hits = 99; // ボスには貫通しない
+        boss.hp--; boss.hitT = 4;
+        burst(b.x, b.y, "#fff", 3);
+        if (boss.hp <= 0) { bossExplode(); break; }
+      }
+    }
+    bullets = bullets.filter(b => b.hits < 3);
+  }
 
   // カプセル
   for (const c of capsules) { c.y += c.vy; c.t += 0.1; }
@@ -451,16 +489,51 @@ function gameOver() {
   beep(90, 0.6, "sawtooth", 0.1);
 }
 
+// ---------- ボス ----------
+function updateBoss() {
+  boss.anim += 0.03;
+  boss.x += boss.dir * (1.2 + wave * 0.02);
+  if (boss.x < 10) { boss.x = 10; boss.dir = 1; }
+  if (boss.x + boss.w > W - 10) { boss.x = W - 10 - boss.w; boss.dir = -1; }
+  boss.y = 60 + Math.sin(boss.anim * 2) * 12;
+  if (boss.hitT > 0) boss.hitT--;
+  if (--boss.shootT <= 0) {
+    boss.shootT = Math.max(22, 55 - (wave / 10) * 5);
+    const cx = boss.x + boss.w / 2, cy = boss.y + boss.h - 14;
+    const dx = (player.x + player.w / 2) - cx;
+    const aim = Math.max(-2.2, Math.min(2.2, dx / 110));
+    for (const off of [-1, 0, 1]) // 自機を狙う3方向弾
+      enemyBullets.push({ x: cx + off * 20, y: cy, vx: aim + off * 0.9, vy: 3 + (wave / 10) * 0.3 });
+    beep(150, 0.08, "sawtooth", 0.05);
+  }
+}
+
+function bossExplode() {
+  for (let i = 0; i < 10; i++)
+    burst(boss.x + Math.random() * boss.w, boss.y + Math.random() * boss.h,
+          ["#f6f", "#ff0", "#fff"][i % 3], 18);
+  flash = 30; shake = 25;
+  const bonus = 3000 + wave * 100;
+  score += bonus;
+  toast(`ボス撃破!! +${bonus}pts`);
+  beep(50, 0.8, "sawtooth", 0.2); beep(100, 0.6, "square", 0.12);
+  boss = null;
+  enemyBullets = [];
+  wave++;
+  makeWave(wave);
+  toast(`WAVE ${wave}!`);
+}
+
 // ---------- 描画 ----------
 function draw() {
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   ctx.clearRect(-20, -20, W + 40, H + 40);
 
-  // 星(速い星ほど明るく、流れる軌跡を引く)
+  // 星(点。速い星ほど明るい)
   for (const s of stars) {
     ctx.fillStyle = s.v > 2.4 ? "#bbd" : s.v > 1.4 ? "#88a" : "#556";
-    ctx.fillRect(s.x, s.y, s.s, s.s + s.v * 3);
+    ctx.fillRect(s.x, s.y, s.s, s.s);
   }
 
   if (state === "title") {
@@ -491,6 +564,17 @@ function draw() {
     drawSprite(SPRITES[e.type][0], e.hp > 1 ? "#fff" : SPRITES[e.type][1], e.x, e.y + bob, 4);
   }
 
+  // ボス + 体力ゲージ
+  if (boss && state === "play") {
+    const bob = Math.sin(boss.anim) * 4;
+    drawSprite(SPRITES[0][0], boss.hitT > 0 ? "#fff" : "#f6f", boss.x, boss.y + bob, boss.w / 8);
+    ctx.fillStyle = "#fff"; ctx.font = "bold 12px 'Courier New'"; ctx.textAlign = "center";
+    ctx.fillText("B O S S", W / 2, 12);
+    ctx.fillStyle = "#400"; ctx.fillRect(40, 18, W - 80, 12);
+    ctx.fillStyle = "#f33"; ctx.fillRect(40, 18, (W - 80) * Math.max(0, boss.hp) / boss.maxHp, 12);
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.strokeRect(40, 18, W - 80, 12);
+  }
+
   // 自弾
   for (const b of bullets) {
     ctx.fillStyle = b.pierce ? "#4f4" : "#ff0";
@@ -499,9 +583,11 @@ function draw() {
     ctx.shadowBlur = 0;
   }
 
-  // 敵弾
-  ctx.fillStyle = "#f66";
+  // 敵弾(明るい赤+発光)
+  ctx.fillStyle = "#ff8a8a";
+  ctx.shadowColor = "#f00"; ctx.shadowBlur = 8;
   for (const b of enemyBullets) ctx.fillRect(b.x - 2, b.y, 4, 10);
+  ctx.shadowBlur = 0;
 
   // カプセル(MEGAは白く点滅)
   for (const c of capsules) {
