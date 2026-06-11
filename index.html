@@ -103,41 +103,34 @@ function beep(freq, dur = 0.08, type = "square", vol = 0.05) {
 }
 
 // ---------- BGM ----------
-// テトリス風: ロシア民謡「コロブチカ」(パブリックドメイン)のチップチューンアレンジ
+// ショパン「幻想即興曲」Op.66(パブリックドメイン)冒頭のチップチューンアレンジ
+// 嬰ハ短調。右手の16分音符の疾走 + 左手の分散和音
 let bgmOn = true, bgmStep = 0, bgmTimer = 0;
-// 周波数(Hz)。0は休符/音を伸ばす。8小節 x 8分音符 = 64ステップのループ
-const E2=82.41, A2=110, B2=123.47, C3=130.81, D3=146.83, E3=164.81,
-      A3=220, B3=246.94, C4=261.63, D4=293.66,
-      A4=440, B4=493.88, C5=523.25, D5=587.33, E5=659.25, F5=698.46, G5=783.99, A5=880;
+// 周波数(Hz)。0は休符/音を伸ばす。4小節 x 16分音符 = 64ステップのループ
+const GS2=103.83, CS3=138.59, GS3=207.65, C4=261.63, CS4=277.18, DS4=311.13,
+      E4=329.63, GS4=415.30, A4=440, C5=523.25, CS5=554.37, DS5=622.25,
+      E5=659.25, FS5=739.99, G4=392, G5=783.99, GS5=830.61, A5=880;
 const BGM_MELODY = [
-  E5, 0,  B4, C5, D5, 0,  C5, B4,
-  A4, 0,  A4, C5, E5, 0,  D5, C5,
-  B4, 0,  0,  C5, D5, 0,  E5, 0,
-  C5, 0,  A4, 0,  A4, 0,  0,  0,
-  0,  D5, 0,  F5, A5, 0,  G5, F5,
-  E5, 0,  0,  C5, E5, 0,  D5, C5,
-  B4, 0,  B4, C5, D5, 0,  E5, 0,
-  C5, 0,  A4, 0,  A4, 0,  0,  0,
+  GS4,A4, GS4,G4,  GS4,CS5,E5, DS5, CS5,DS5,CS5,C5,  CS5,E5, GS5,G5,
+  GS5,A5, GS5,G5,  GS5,E5, DS5,CS5, E5, DS5,CS5,DS5, CS5,C5, CS5,0,
+  GS5,FS5,E5, DS5, E5, CS5,DS5,C5,  DS5,CS5,C5, DS5, CS5,GS4,A4, GS4,
+  CS5,E5, GS5,E5,  CS5,GS4,E4, GS4, CS5,0,  GS4,0,   CS5,0,  0,  0,
 ];
 const BGM_BASSLINE = [
-  E2, E3, E2, E3, E2, E3, E2, E3,   // Em
-  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
-  B2, B3, B2, B3, B2, B3, B2, B3,   // B7
-  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
-  D3, D4, D3, D4, D3, D4, D3, D4,   // Dm
-  C3, C4, C3, C4, C3, C4, C3, C4,   // C
-  B2, B3, B2, B3, B2, B3, B2, B3,   // B7
-  A2, A3, A2, A3, A2, A3, A2, A3,   // Am
+  CS3,0, GS3,0, CS4,0, E4,0,  CS4,0, GS3,0, CS4,0, E4,0,   // C#m
+  CS3,0, GS3,0, CS4,0, E4,0,  CS4,0, GS3,0, CS4,0, E4,0,   // C#m
+  GS2,0, GS3,0, C4,0,  DS4,0, C4,0,  GS3,0, C4,0,  DS4,0,  // G#7
+  CS3,0, GS3,0, CS4,0, E4,0,  CS3,0, GS3,0, CS3,0, 0,0,    // C#m
 ];
 function bgmTick() {
   if (!bgmOn) return;
   if (--bgmTimer > 0) return;
-  bgmTimer = 12; // 約150BPMの8分音符(60fps基準)
+  bgmTimer = 6; // 16分音符を毎秒10個(Allegro agitato相当)
   const m = BGM_MELODY[bgmStep], b = BGM_BASSLINE[bgmStep];
-  if (b) beep(b, 0.15, "triangle", 0.25);
+  if (b) beep(b, 0.16, "triangle", 0.24);
   if (m) {
-    beep(m, 0.17, "square", 0.10);         // メインリード
-    beep(m * 2.003, 0.14, "square", 0.03); // 微デチューンを重ねて広がりを出す
+    beep(m, 0.10, "square", 0.09);         // 右手の疾走パッセージ
+    beep(m * 2.003, 0.08, "square", 0.025); // 微デチューンで広がり
   }
   bgmStep = (bgmStep + 1) % BGM_MELODY.length;
 }
