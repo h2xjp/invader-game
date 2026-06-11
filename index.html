@@ -78,7 +78,7 @@
   <span style="color:#4af">● RAPID(連射↑)</span>
   <span style="color:#4f4">● PIERCE(貫通10秒)</span>
   <span style="color:#fd0">● SHIELD(被弾1回防ぐ)</span>
-  <span style="color:#f0f">● MEGA(全体爆発・激レア)</span>
+  <span style="color:#fff">● MEGA(白点滅・全体爆発・激レア)</span>
 </div>
 
 <script>
@@ -103,23 +103,34 @@ function beep(freq, dur = 0.08, type = "square", vol = 0.05) {
 }
 
 // ---------- BGM ----------
-// 本家風: 4音の低音ループ。敵が減るほど・WAVEが進むほどテンポが上がる
-let bgmOn = true, bgmStep = 0, bgmTimer = 0, bgmBar = 0;
-const BGM_BASS = [110, 103.83, 98, 92.5];           // A2 → G#2 → G2 → F#2
-const BGM_ARP  = [220, 261.63, 329.63, 261.63];     // たまに鳴るアルペジオ
+// グラディウス風: 8分音符で疾走するオクターブベース + 勇壮なAマイナーのメロディ(オリジナル曲)
+let bgmOn = true, bgmStep = 0, bgmTimer = 0;
+// 周波数(Hz)。0は休符。4小節 x 8分音符 = 32ステップのループ
+const A2=110, E2=82.41, F2=87.31, G2=98, A3=220, E3=164.81, F3=174.61, G3=196;
+const A4=440, B4=493.88, C5=523.25, D5=587.33, E5=659.25, F5=698.46, G4=392, G5=783.99, E4=329.63;
+const BGM_MELODY = [
+  A4, 0,  C5, E5, D5, C5, D5, E5,   // 駆け上がり
+  B4, 0,  G4, B4, D5, B4, C5, D5,
+  C5, E5, G5, E5, F5, E5, D5, C5,   // クライマックス
+  B4, D5, B4, G4, A4, 0,  A4, 0,
+];
+const BGM_BASSLINE = [
+  A2, A3, A2, A3, A2, A3, A2, A3,   // ギャロップするオクターブベース
+  G2, G3, G2, G3, G2, G3, G2, G3,
+  F2, F3, F2, F3, F2, F3, F2, F3,
+  E2, E3, E2, E3, G2, G3, G2, G3,
+];
 function bgmTick() {
   if (!bgmOn) return;
-  bgmTimer--;
-  if (bgmTimer > 0) return;
-  const aliveRatio = enemies.length ? enemies.filter(e => e.alive).length / enemies.length : 1;
-  // 間隔: 敵全滅に近づくほど 36 → 10 フレームへ。WAVEでも少し加速
-  bgmTimer = Math.max(10, (36 - (1 - aliveRatio) * 22) - Math.min(8, wave));
-  beep(BGM_BASS[bgmStep], 0.16, "triangle", 0.25);
-  beep(BGM_BASS[bgmStep] / 2, 0.16, "square", 0.06); // 1オクターブ下を重ねて厚みを出す
-  // 2小節に1回、裏でアルペジオを重ねる
-  if (bgmBar % 2 === 1) beep(BGM_ARP[bgmStep], 0.08, "square", 0.05);
-  bgmStep = (bgmStep + 1) % 4;
-  if (bgmStep === 0) bgmBar++;
+  if (--bgmTimer > 0) return;
+  bgmTimer = 9; // 約200BPMの8分音符(60fps基準)
+  const m = BGM_MELODY[bgmStep], b = BGM_BASSLINE[bgmStep];
+  if (b) beep(b, 0.13, "triangle", 0.25);
+  if (m) {
+    beep(m, 0.13, "square", 0.10);       // メインリード
+    beep(m * 2.003, 0.11, "square", 0.03); // 微デチューンを重ねて広がりを出す
+  }
+  bgmStep = (bgmStep + 1) % BGM_MELODY.length;
 }
 
 // ---------- 入力 ----------
@@ -195,13 +206,13 @@ const CAPSULE_TYPES = [
   { id: "RAPID",  color: "#4af", weight: 29 },
   { id: "PIERCE", color: "#4f4", weight: 19 },
   { id: "SHIELD", color: "#fd0", weight: 15 },
-  { id: "MEGA",   color: "#f0f", weight: 4 }, // ごく稀: 画面全体爆発
+  { id: "MEGA",   color: "#fff", weight: 4 }, // ごく稀: 画面全体爆発(白点滅)
 ];
 
-// ---------- 星空 ----------
-stars = Array.from({ length: 70 }, () => ({
+// ---------- 星空(上から下へ流れるスクロール) ----------
+stars = Array.from({ length: 130 }, () => ({
   x: Math.random() * W, y: Math.random() * H,
-  s: Math.random() * 1.5 + 0.3, v: Math.random() * 0.5 + 0.1
+  s: Math.random() * 1.5 + 0.3, v: Math.random() * 3 + 0.6
 }));
 
 // ---------- 敵スプライト(ドット絵) ----------
@@ -446,9 +457,11 @@ function draw() {
   if (shake > 0) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
   ctx.clearRect(-20, -20, W + 40, H + 40);
 
-  // 星
-  ctx.fillStyle = "#88a";
-  for (const s of stars) ctx.fillRect(s.x, s.y, s.s, s.s);
+  // 星(速い星ほど明るく、流れる軌跡を引く)
+  for (const s of stars) {
+    ctx.fillStyle = s.v > 2.4 ? "#bbd" : s.v > 1.4 ? "#88a" : "#556";
+    ctx.fillRect(s.x, s.y, s.s, s.s + s.v * 3);
+  }
 
   if (state === "title") {
     ctx.textAlign = "center";
@@ -490,13 +503,16 @@ function draw() {
   ctx.fillStyle = "#f66";
   for (const b of enemyBullets) ctx.fillRect(b.x - 2, b.y, 4, 10);
 
-  // カプセル
+  // カプセル(MEGAは白く点滅)
   for (const c of capsules) {
     const pulse = 1 + Math.sin(c.t * 3) * 0.15;
+    const col = c.type.id === "MEGA"
+      ? (((c.t * 2) | 0) % 2 ? "#fff" : "#666")
+      : c.type.color;
     ctx.save();
     ctx.translate(c.x, c.y); ctx.scale(pulse, pulse);
-    ctx.shadowColor = c.type.color; ctx.shadowBlur = 12;
-    ctx.fillStyle = c.type.color;
+    ctx.shadowColor = col; ctx.shadowBlur = 12;
+    ctx.fillStyle = col;
     ctx.beginPath(); ctx.arc(0, 0, c.r, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#000"; ctx.font = "bold 10px monospace"; ctx.textAlign = "center";
