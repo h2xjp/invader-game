@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>INVADERS - パワーアップ版</title>
+<title>インベーダーCC</title>
 <style>
   body {
     margin: 0; min-height: 100vh; display: flex; flex-direction: column;
@@ -57,12 +57,12 @@
 </style>
 </head>
 <body>
-<h1>INVADERS</h1>
+<h1>インベーダーCC</h1>
 <div id="hud">
   <div>SCORE: <span id="score">0</span></div>
   <div>HI: <span id="hi">0</span></div>
   <div>WAVE: <span id="wave">1</span></div>
-  <div>LIVES: <span id="lives">3</span></div>
+  <div>LIVES: <span id="lives">♥</span></div>
   <div class="pw">WEAPON: <span id="weapon">Lv1</span></div>
 </div>
 <canvas id="game" width="560" height="640"></canvas>
@@ -531,8 +531,8 @@ function draw() {
 
   if (state === "title") {
     ctx.textAlign = "center";
-    ctx.fillStyle = "#0f0"; ctx.font = "bold 40px 'Courier New'";
-    ctx.fillText("INVADERS", W / 2, 200);
+    ctx.fillStyle = "#0f0"; ctx.font = "bold 44px 'Courier New'";
+    ctx.fillText("インベーダーCC", W / 2, 200);
     ctx.font = "16px 'Courier New'"; ctx.fillStyle = "#ff0";
     ctx.fillText("〜 POWER-UP EDITION 〜", W / 2, 235);
     ctx.fillStyle = "#fff";
