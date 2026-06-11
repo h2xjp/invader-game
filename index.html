@@ -77,7 +77,8 @@
   <span style="color:#f44">● POWER(攻撃Lv↑)</span>
   <span style="color:#4af">● RAPID(連射↑)</span>
   <span style="color:#4f4">● PIERCE(貫通10秒)</span>
-  <span style="color:#fd0">● SHIELD(バリア)</span>
+  <span style="color:#fd0">● SHIELD(被弾1回防ぐ)</span>
+  <span style="color:#f0f">● MEGA(全体爆発・激レア)</span>
 </div>
 
 <script>
@@ -181,7 +182,7 @@ let paused = false;
 let score = 0, hi = +(localStorage.getItem("inv_hi") || 0), lives = 3, wave = 1;
 let player, bullets, enemyBullets, enemies, capsules, particles, stars;
 let eDir = 1, eSpeed = 0, eStepDown = false, eShootTimer = 0;
-let invincible = 0, shake = 0;
+let invincible = 0, shake = 0, flash = 0;
 
 // パワーアップ状態
 let weaponLv = 1;        // 1〜4: 弾数・配置が変化
@@ -190,10 +191,11 @@ let pierceTimer = 0;     // 貫通残り(フレーム)
 let shield = 0;          // バリア枚数
 
 const CAPSULE_TYPES = [
-  { id: "POWER",  color: "#f44", weight: 34 },
-  { id: "RAPID",  color: "#4af", weight: 30 },
-  { id: "PIERCE", color: "#4f4", weight: 20 },
-  { id: "SHIELD", color: "#fd0", weight: 16 },
+  { id: "POWER",  color: "#f44", weight: 33 },
+  { id: "RAPID",  color: "#4af", weight: 29 },
+  { id: "PIERCE", color: "#4f4", weight: 19 },
+  { id: "SHIELD", color: "#fd0", weight: 15 },
+  { id: "MEGA",   color: "#f0f", weight: 4 }, // ごく稀: 画面全体爆発
 ];
 
 // ---------- 星空 ----------
@@ -232,7 +234,7 @@ function makeWave(n) {
 }
 
 function startGame() {
-  score = 0; lives = 3; wave = 1;
+  score = 0; lives = 1; wave = 1;
   weaponLv = 1; fireDelay = 22; pierceTimer = 0; shield = 0;
   player = { x: W / 2 - 16, y: H - 48, w: 32, h: 18, cool: 0 };
   bullets = []; enemyBullets = []; capsules = []; particles = [];
@@ -251,7 +253,7 @@ function burst(x, y, color, n = 12) {
 
 // ---------- カプセルドロップ ----------
 function maybeDrop(x, y) {
-  if (Math.random() >= 0.10) return; // 10%でドロップ
+  if (Math.random() >= 0.05) return; // 5%でドロップ
   const total = CAPSULE_TYPES.reduce((s, t) => s + t.weight, 0);
   let r = Math.random() * total, type = CAPSULE_TYPES[0];
   for (const t of CAPSULE_TYPES) { r -= t.weight; if (r < 0) { type = t; break; } }
@@ -269,8 +271,19 @@ function applyCapsule(c) {
   } else if (t === "PIERCE") {
     pierceTimer = 600; toast("貫通弾! 10秒");
   } else if (t === "SHIELD") {
-    if (shield < 3) { shield++; toast(`シールド +1 (${shield})`); }
-    else { score += 300; toast("シールドMAX! +300pts"); }
+    if (shield < 1) { shield = 1; toast("シールド装備! (被弾1回防ぐ)"); }
+    else { score += 300; toast("シールド装備済み! +300pts"); }
+  } else if (t === "MEGA") {
+    let killed = 0;
+    for (const e of enemies) {
+      if (!e.alive) continue;
+      e.alive = false; killed++;
+      score += (3 - e.type) * 10 + 10;
+      burst(e.x + e.w / 2, e.y + e.h / 2, "#f0f", 10);
+    }
+    flash = 25; shake = 20;
+    toast(`メガクラッシュ!! ${killed}体撃破!`);
+    beep(60, 0.5, "sawtooth", 0.18); beep(120, 0.4, "square", 0.12);
   }
   beep(880, 0.12, "triangle", 0.08); beep(1320, 0.15, "triangle", 0.06);
   burst(c.x, c.y, c.type.color, 16);
@@ -308,6 +321,7 @@ function update() {
   if (invincible > 0) invincible--;
   if (pierceTimer > 0) pierceTimer--;
   if (shake > 0) shake--;
+  if (flash > 0) flash--;
 
   // 自弾
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
@@ -413,12 +427,11 @@ function update() {
 }
 
 function damagePlayer() {
-  lives--; shake = 14; invincible = 120;
+  // シールドがなければ一撃死
+  lives = 0; shake = 14;
   burst(player.x + player.w / 2, player.y + 8, "#0f0", 24);
   beep(110, 0.3, "sawtooth", 0.09);
-  // 被弾でパワー半減ペナルティ
-  weaponLv = Math.max(1, weaponLv - 1);
-  if (lives <= 0) gameOver();
+  gameOver();
 }
 
 function gameOver() {
@@ -446,6 +459,8 @@ function draw() {
     ctx.fillStyle = "#fff";
     ctx.fillText("敵を倒すとカプセルが降ってくる!", W / 2, 320);
     ctx.fillText("取って自機を強化しよう", W / 2, 348);
+    ctx.fillStyle = "#f66";
+    ctx.fillText("シールドなしで被弾すると一撃死!", W / 2, 376);
     drawSprite(SPRITES[0][0], SPRITES[0][1], W / 2 - 70, 390, 3);
     drawSprite(SPRITES[1][0], SPRITES[1][1], W / 2 - 12, 390, 3);
     drawSprite(SPRITES[2][0], SPRITES[2][1], W / 2 + 46, 390, 3);
@@ -516,6 +531,12 @@ function draw() {
     ctx.fillRect(p.x, p.y, 3, 3);
   }
   ctx.globalAlpha = 1;
+
+  // メガクラッシュの全画面フラッシュ
+  if (flash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${(flash / 25) * 0.8})`;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   // トースト
   ctx.textAlign = "center"; ctx.font = "bold 16px 'Courier New'";
